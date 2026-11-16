@@ -18,6 +18,11 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
@@ -26,6 +31,12 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/Basheer009/specprobe"
+Repository = "https://github.com/Basheer009/specprobe"
+Issues = "https://github.com/Basheer009/specprobe/issues"
+Changelog = "https://github.com/Basheer009/specprobe/blob/HEAD/CHANGELOG.md"
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]

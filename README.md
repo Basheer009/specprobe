@@ -13,8 +13,8 @@ Paste a docs page, a spec URL, a bare host or a local file. SpecProbe finds the 
 - **Copy any request as cURL.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/main-dark.png">
-  <img src="docs/screenshots/main-light.png" alt="SpecProbe with the public Petstore demo loaded, showing the endpoint tree, a request and its response">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/main-dark.png">
+  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/main-light.png" alt="SpecProbe with the public Petstore demo loaded, showing the endpoint tree, a request and its response">
 </picture>
 
 ## Install
@@ -22,7 +22,7 @@ Paste a docs page, a spec URL, a bare host or a local file. SpecProbe finds the 
 Requires Python 3.10 or newer.
 
 ```bash
-git clone <this repository>
+git clone https://github.com/Basheer009/specprobe.git
 cd specprobe
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
@@ -49,8 +49,8 @@ specprobe-gui https://api.example.com/docs   # load straight away
 The status line shows the result along with `contract: OK` or the number of issues, which are listed on the **Contract** tab.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/contract-dark.png">
-  <img src="docs/screenshots/contract-light.png" alt="The Contract tab reporting that a response labelled as JSON could not be parsed">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/contract-dark.png">
+  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/contract-light.png" alt="The Contract tab reporting that a response labelled as JSON could not be parsed">
 </picture>
 
 | Area | What it does |
@@ -80,8 +80,8 @@ The app follows your system's light or dark theme. The screenshots here switch w
 **Audit...** calls every GET endpoint whose required values it knows, and skips the rest rather than guessing. Give it values such as `petId=1, username=user1` to cover more endpoints. It's the same sweep as the CLI's `audit`, and **Export JSON...** saves the report.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/audit-dark.png">
-  <img src="docs/screenshots/audit-light.png" alt="The Audit dialog after sweeping the Petstore demo: six endpoints ok, one 404, one skipped for a missing value">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/audit-dark.png">
+  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/audit-light.png" alt="The Audit dialog after sweeping the Petstore demo: six endpoints ok, one 404, one skipped for a missing value">
 </picture>
 
 ### Login dialog
@@ -89,8 +89,8 @@ The app follows your system's light or dark theme. The screenshots here switch w
 The dialog suggests login endpoints from the spec and fills in what the endpoint's schema reveals, such as the username field, form or JSON encoding, and other required fields. You can change any of it.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/login-dark.png">
-  <img src="docs/screenshots/login-light.png" alt="The Login dialog, prefilled from a JSON login endpoint that also requires a device_id field">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/login-dark.png">
+  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/login-light.png" alt="The Login dialog, prefilled from a JSON login endpoint that also requires a device_id field">
 </picture>
 
 - **Send as:** JSON, or form-encoded for the OAuth2 password grant (FastAPI's `OAuth2PasswordRequestForm`, for example).
@@ -252,4 +252,4 @@ The tests use only the standard library and need no network. They run against a 
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/Basheer009/specprobe/blob/HEAD/LICENSE)

@@ -1,0 +1,3 @@
+include CHANGELOG.md
+include tests/*.py
+global-exclude *.py[cod] __pycache__
