@@ -29,7 +29,6 @@ from . import __version__
 from .core import (
     Auth,
     Endpoint,
-    audit_one,
     base_url_from_spec,
     build_url,
     deref,
@@ -46,6 +45,7 @@ from .core import (
     parse_security_schemes,
     param_type_label,
     plan_audit,
+    run_audit,
     response_schema,
     spec_title,
     spec_version_label,
@@ -77,6 +77,16 @@ def _pairs(items: Optional[list[str]], flag: str) -> list[tuple[str, str]]:
         k, v = item.split("=", 1)
         out.append((k.strip(), v))
     return out
+
+
+def _positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {text!r}") from None
+    if not 1 <= value <= 64:
+        raise argparse.ArgumentTypeError("must be between 1 and 64")
+    return value
 
 
 def _auth(args) -> Optional[Auth]:
@@ -447,17 +457,16 @@ def cmd_audit(args) -> int:
     counts = {"ok": 0, "auth": 0, "client": 0, "server": 0, "error": 0}
     rows = []
     contract_problems = 0
-    for ep, parts in targets:
-        row = audit_one(
-            ep, parts, base,
-            spec=spec,
-            validate=args.validate,
-            headers=_global_headers(args),
-            auth=_auth(args),
-            cookies=_global_cookies(args),
-            verify=not args.no_verify,
-            timeout=args.timeout,
-        )
+    options = dict(
+        spec=spec,
+        validate=args.validate,
+        headers=_global_headers(args),
+        auth=_auth(args),
+        cookies=_global_cookies(args),
+        verify=not args.no_verify,
+        timeout=args.timeout,
+    )
+    for row in run_audit(targets, base, jobs=args.jobs, **options):
         counts[row.bucket] += 1
         if row.issues:
             contract_problems += 1
@@ -578,6 +587,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--filter", help="Substring filter on path/summary/tag/operationId")
     a.add_argument("--limit", type=int, help="Cap the number of endpoints")
     a.add_argument("--timeout", type=float, default=15)
+    a.add_argument("--jobs", type=_positive_int, default=1, metavar="N",
+                   help="Requests in flight at once. Default 1; raise it only for servers that can take it")
     a.add_argument("--table", action="store_true", help="Plain-text rows instead of JSON")
     a.add_argument("--validate", action="store_true", help="Also check responses against the spec")
     a.add_argument("--fail-on", choices=sorted(_FAIL_BUCKETS), default="none",

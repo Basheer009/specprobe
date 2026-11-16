@@ -251,6 +251,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parts.path
         self.server.seen.append(self.path)
         self.server.auth_seen[path] = self.headers.get("Authorization")
+        self.server.peers.append(self.client_address[1])
 
         if self.server.locked:
             return self._send(401, {"detail": "login required"})
@@ -375,6 +376,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"detail": "boom"})
         if path.startswith("/search/"):
             return self._send(body={"ok": True})
+        if path == "/give-cookie":  # a GET that opens a cookie session
+            return self._send(body={"ok": True}, headers={"Set-Cookie": "sessionid=from-get; Path=/"})
         if path == "/no-charset":
             return self._send(body="café ✓".encode("utf-8"), ctype="application/x-custom")
         if path == "/binary":
@@ -438,6 +441,7 @@ class MockApi:
         self.server.daemon_threads = True
         self.server.seen = []
         self.server.auth_seen = {}
+        self.server.peers = []
         self.server.locked = False
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

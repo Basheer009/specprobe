@@ -311,6 +311,18 @@ class Login(CliTestCase):
 
 
 class Audit(CliTestCase):
+    def test_jobs_gives_the_same_report(self):
+        _, one, _ = self.cli("audit", "--param", "id=1")
+        code, many, _ = self.cli("audit", "--param", "id=1", "--jobs", "4")
+        self.assertEqual(code, 0)
+        strip = lambda out: [(r["path"], r["status"]) for r in json.loads(out)["results"]]
+        self.assertEqual(strip(one), strip(many))
+
+    def test_jobs_must_be_positive(self):
+        code, _, err = self.cli("audit", "--jobs", "0")
+        self.assertEqual(code, 2)
+        self.assertIn("between 1 and 64", err)
+
     def test_report_and_buckets(self):
         code, out, err = self.cli("audit")
         self.assertEqual(code, 0)

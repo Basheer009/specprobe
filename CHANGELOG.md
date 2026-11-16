@@ -14,6 +14,7 @@ First public release. The project is now an installable package (`specprobe/`) w
 - Local spec files. Spec discovery that reads docs pages and init scripts, and specs behind authentication.
 - GUI: server picker, per-API settings, drafts kept across endpoints, request history, Docs tab, extra headers, enum dropdowns, cancel, timeout, Copy as cURL, Save response, Log tab, and dark theme support.
 - CLI: `show` subcommand, `--curl`, `--output`, `--form`, `--body`, `--version`, `$SPECPROBE_URL`, and safer ways to supply a password.
+- Parallel audits: `audit --jobs N`, or **Parallel** in the GUI's Audit dialog. The default is still one request at a time.
 - Test suite running against a local mock API, run by GitHub Actions on Windows for Python 3.10 to 3.13.
 
 ### Changed
@@ -24,6 +25,9 @@ First public release. The project is now an installable package (`specprobe/`) w
 - `login()` now returns a `LoginResult` instead of a tuple.
 - The CLI is quiet by default. Use `-v` for the request trace.
 - `cli.bat` no longer changes directory, so relative paths work.
+- Audits reuse connections: one TCP and TLS handshake per host instead of one per endpoint.
+- Filtering the endpoint list is about ten times faster on large specs (6,000 endpoints: ~100 ms to ~10 ms per keystroke).
+- Spec discovery checks a candidate for operations without building its whole endpoint list.
 
 ### Fixed
 

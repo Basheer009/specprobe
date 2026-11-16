@@ -14,11 +14,13 @@ import logging
 import os
 import re
 import shlex
+import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Iterable, Iterator, Optional, Union
 from urllib.parse import (
     parse_qsl,
     quote,
@@ -453,7 +455,7 @@ def fetch_spec(
             if spec is None:
                 spec, how = embedded_spec(r.text), "spec embedded in the page"
             if spec is not None:
-                if parse_endpoints(spec):
+                if has_operations(spec):
                     log.debug("fetch_spec: OK %s (%s)", redact_url(candidate), how)
                     return spec, r.url
                 log.debug("fetch_spec: %s has no operations; trying the other declared URLs", redact_url(candidate))
@@ -664,6 +666,18 @@ def parse_endpoints(spec: dict) -> list[Endpoint]:
                 security=op.get("security") if isinstance(op.get("security"), list) else None,
             ))
     return eps
+
+
+def has_operations(spec: dict) -> bool:
+    """True when parse_endpoints would find at least one operation, without building them."""
+    paths = spec.get("paths") if isinstance(spec.get("paths"), dict) else {}
+    for item in paths.values():
+        item = deref(item, spec)
+        if isinstance(item, dict) and any(
+            isinstance(op, dict) and str(method).lower() in HTTP_METHODS for method, op in item.items()
+        ):
+            return True
+    return False
 
 
 def find_endpoint(eps: list[Endpoint], method: str, path: str) -> Optional[Endpoint]:
@@ -1371,12 +1385,17 @@ def execute_call(
     cookies: Optional[dict] = None,
     verify: bool = True,
     timeout: float = 30,
+    session: Optional[requests.Session] = None,
 ) -> CallResult:
     """Send one request. Failures come back in CallResult.error rather than raising.
 
     `body` is encoded according to `content_type`: JSON, urlencoded form, multipart
     (a string value `@path` uploads that file) or raw text. `json_body` is shorthand
     for a JSON body. `token` is shorthand for `Auth(kind="bearer", token=token)`.
+
+    Passing a `session` reuses its open connections, which saves a TCP and TLS
+    handshake per call when many requests go to one host. Cookies the server sets
+    are cleared from it afterwards, so one call never silently authenticates the next.
     """
     method = method.upper()
     payload = body if body is not None else json_body
@@ -1400,9 +1419,12 @@ def execute_call(
     log.debug("execute_call: %s %s auth=%s", method, redact_url(display_redact(full_url, auth)),
               (auth.kind if auth else "bearer" if token else "none"))
     try:
-        r = requests.request(method, full_url, timeout=timeout, verify=verify, **kwargs)
+        r = (session or requests).request(method, full_url, timeout=timeout, verify=verify, **kwargs)
     except requests.RequestException as e:
         return failed(str(e), full_url)
+    finally:
+        if session is not None:
+            session.cookies.clear()
     elapsed = (time.perf_counter() - t0) * 1000
     log.debug("execute_call: <- %s %s %.0fms", r.status_code, r.reason, elapsed)
     _default_utf8(r)
@@ -2014,8 +2036,12 @@ def audit_one(
     cookies: Optional[dict] = None,
     verify: bool = True,
     timeout: float = 15,
+    session: Optional[requests.Session] = None,
 ) -> AuditRow:
-    """Call one planned endpoint and bucket the outcome."""
+    """Call one planned endpoint and bucket the outcome.
+
+    Share one `session` across an audit's calls so connections are reused.
+    """
     url = build_url(base, ep.path, parts.path_params)
     res = execute_call(
         "GET", url,
@@ -2025,6 +2051,7 @@ def audit_one(
         auth=auth,
         verify=verify,
         timeout=timeout,
+        session=session,
     )
     issues = validate_response(ep, res, spec) if (validate and spec) else []
     return AuditRow(
@@ -2038,3 +2065,49 @@ def audit_one(
         error=res.error,
         issues=issues,
     )
+
+
+def run_audit(
+    targets: list[tuple[Endpoint, RequestParts]],
+    base: str,
+    *,
+    jobs: int = 1,
+    **options: Any,
+) -> Iterator[AuditRow]:
+    """Call every planned endpoint, yielding rows in plan order.
+
+    `jobs` above 1 keeps that many requests in flight. The default of 1 is
+    deliberate: an audit shouldn't trip rate limits or load a server unasked.
+    Each worker thread reuses its own connections. Closing the generator early
+    cancels the calls that haven't started.
+    """
+    local = threading.local()
+    sessions: list[requests.Session] = []
+    lock = threading.Lock()
+
+    def call(target: tuple[Endpoint, RequestParts]) -> AuditRow:
+        session = getattr(local, "session", None)
+        if session is None:
+            session = local.session = requests.Session()
+            with lock:
+                sessions.append(session)
+        ep, parts = target
+        return audit_one(ep, parts, base, session=session, **options)
+
+    try:
+        if jobs <= 1:
+            for target in targets:
+                yield call(target)
+            return
+        with ThreadPoolExecutor(max_workers=jobs, thread_name_prefix="specprobe-audit") as pool:
+            futures = [pool.submit(call, target) for target in targets]
+            try:
+                for future in futures:
+                    yield future.result()
+            finally:
+                for future in futures:
+                    future.cancel()
+    finally:
+        with lock:
+            for session in sessions:
+                session.close()

@@ -1,11 +1,15 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
+
+import requests
 
 from specprobe import core
 from specprobe.core import (
     Auth,
+    audit_one,
     build_url,
     discover_spec_url,
     example_body,
@@ -23,6 +27,7 @@ from specprobe.core import (
     parse_security_schemes,
     plan_audit,
     redact_url,
+    run_audit,
     server_urls,
     split_param_values,
     to_curl,
@@ -248,6 +253,22 @@ class Parsing(unittest.TestCase):
             {"paths": {"/a": {"$ref": "#/paths/~1a"}}},  # self-referencing path item
         ):
             parse_endpoints(spec)
+
+
+class HasOperations(unittest.TestCase):
+    def test_agrees_with_parse_endpoints(self):
+        cases = [
+            PETS_SPEC,
+            SWAGGER2_SPEC,
+            {"openapi": "3.0.0", "paths": {}},
+            {"openapi": "3.0.0", "paths": {"/x": {"parameters": [], "summary": "no ops"}}},
+            {"openapi": "3.0.0", "paths": {"/x": {"get": "not a dict"}}},
+            {"openapi": "3.0.0", "paths": {"/x": {"$ref": "#/components/pathItems/X"}},
+             "components": {"pathItems": {"X": {"get": {"responses": {}}}}}},
+            {"openapi": "3.0.0", "paths": "broken"},
+        ]
+        for spec in cases:
+            self.assertEqual(core.has_operations(spec), bool(parse_endpoints(spec)), spec)
 
 
 class Servers(unittest.TestCase):
@@ -653,6 +674,63 @@ class Audit(unittest.TestCase):
     def test_only_get_is_ever_planned(self):
         targets, _ = plan_audit(parse_endpoints(PETS_SPEC), PETS_SPEC, params={"id": "1", "q": "x"})
         self.assertEqual({ep.method for ep, _ in targets}, {"GET"})
+
+
+class SharedSession(ApiTestCase):
+    def test_calls_reuse_one_connection(self):
+        before = len(self.api.server.peers)
+        with requests.Session() as session:
+            for _ in range(3):
+                res = execute_call("GET", self.api.url + "/pets", session=session)
+                self.assertEqual(res.status, 200)
+        self.assertEqual(len(set(self.api.server.peers[before:])), 1)
+
+    def test_cookies_never_carry_to_the_next_call(self):
+        with requests.Session() as session:
+            execute_call("GET", self.api.url + "/give-cookie", session=session)
+            res = execute_call("GET", self.api.url + "/echo", session=session)
+        self.assertNotIn("cookie", res.json["headers"])
+
+    def test_explicit_cookies_still_sent(self):
+        with requests.Session() as session:
+            res = execute_call("GET", self.api.url + "/echo", cookies={"a": "1"}, session=session)
+        self.assertEqual(res.json["headers"].get("cookie"), "a=1")
+
+    def test_audit_one_uses_the_session(self):
+        eps = parse_endpoints(PETS_SPEC)
+        targets, _ = plan_audit(eps, PETS_SPEC)
+        before = len(self.api.server.peers)
+        with requests.Session() as session:
+            rows = [audit_one(ep, parts, self.api.url, session=session) for ep, parts in targets]
+        self.assertTrue(rows)
+        self.assertEqual(len(set(self.api.server.peers[before:])), 1)
+
+
+class RunAudit(ApiTestCase):
+    def setUp(self):
+        self.targets, _ = plan_audit(parse_endpoints(PETS_SPEC), PETS_SPEC, params={"id": "1", "q": "x"})
+        self.slow = [t for t in self.targets if t[0].path == "/slow"]
+
+    def test_parallel_gives_the_same_rows_in_plan_order(self):
+        sequential = [(r.path, r.status) for r in run_audit(self.targets, self.api.url)]
+        parallel = [(r.path, r.status) for r in run_audit(self.targets, self.api.url, jobs=4)]
+        self.assertEqual(sequential, parallel)
+        self.assertEqual([p for p, _ in parallel], [ep.path for ep, _ in self.targets])
+
+    def test_parallel_overlaps_requests(self):
+        started = time.perf_counter()
+        rows = list(run_audit(self.slow * 3, self.api.url, jobs=3))
+        self.assertEqual([r.status for r in rows], [200, 200, 200])
+        self.assertLess(time.perf_counter() - started, 3.0)  # one at a time takes 4.5 s
+
+    def test_closing_early_cancels_calls_not_started(self):
+        before = self.api.server.seen.count("/slow")
+        rows = run_audit(self.slow * 6, self.api.url, jobs=2)
+        next(rows)
+        rows.close()
+        # By the first result, both threads may have moved on to the next pair.
+        # The last two are still queued, and those never reach the server.
+        self.assertLessEqual(self.api.server.seen.count("/slow") - before, 4)
 
 
 class NoBackendAssumptions(unittest.TestCase):

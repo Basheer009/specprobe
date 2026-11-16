@@ -183,6 +183,8 @@ specprobe --url ... audit --param version=1 --param tenant=acme --tag users --fa
 
 Only GET requests are sent. A required parameter is filled from `--param`, then from a default or example in the spec. Endpoints still missing a value are listed as skipped rather than called with invented data. Each result lands in a bucket: `ok`, `auth` (401/403), `client`, `server` or `error`.
 
+Calls reuse connections, so there's one TLS handshake per host rather than one per endpoint. `--jobs N` keeps up to N requests in flight. The default is 1; raise it only for servers that can take the load. Results are reported in the same order either way.
+
 `--fail-on` chooses what makes the exit code 1, which is what you want in CI:
 
 | Value | Fails on |

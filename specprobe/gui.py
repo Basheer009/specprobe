@@ -36,7 +36,6 @@ from .core import (
     CallResult,
     Endpoint,
     RequestParts,
-    audit_one,
     body_text_for_editor,
     build_url,
     default_param_value,
@@ -59,6 +58,7 @@ from .core import (
     parse_endpoints,
     parse_security_schemes,
     plan_audit,
+    run_audit,
     resolve_auth_url,
     response_schema,
     server_urls,
@@ -95,6 +95,12 @@ MAX_DISPLAY_CHARS = 2_000_000
 MAX_HIGHLIGHT_CHARS = 300_000
 
 _LIVE_WORKERS: set = set()
+_HAYSTACK_ROLE = QtCore.Qt.UserRole + 1
+
+
+def _filter_haystack(ep: Endpoint) -> str:
+    """The text the endpoint filter searches, built once per load."""
+    return f"{ep.method} {ep.path} {ep.summary} {ep.operation_id} {' '.join(ep.tags)}".lower()
 
 
 def _settings() -> QtCore.QSettings:
@@ -179,10 +185,11 @@ class AuditWorker(QtCore.QThread):
 
     row_ready = QtCore.Signal(object)
 
-    def __init__(self, targets: list, base: str, **options):
+    def __init__(self, targets: list, base: str, jobs: int = 1, **options):
         super().__init__()
         self._targets = targets
         self._base = base
+        self._jobs = jobs
         self._options = options
         self.stop_requested = False
         _LIVE_WORKERS.add(self)
@@ -193,10 +200,16 @@ class AuditWorker(QtCore.QThread):
         _LIVE_WORKERS.discard(self)
 
     def run(self):
-        for ep, parts in self._targets:
-            if self.stop_requested:
-                return
-            self.row_ready.emit(audit_one(ep, parts, self._base, **self._options))
+        if self.stop_requested:
+            return
+        rows = run_audit(self._targets, self._base, jobs=self._jobs, **self._options)
+        try:
+            for row in rows:
+                self.row_ready.emit(row)
+                if self.stop_requested:
+                    return
+        finally:
+            rows.close()  # cancels calls not yet started
 
 
 class LogBridge(QtCore.QObject):
@@ -627,6 +640,12 @@ class AuditDialog(QtWidgets.QDialog):
         self.validate_box.setChecked(True)
         self.validate_box.setToolTip("Compare each response with the spec")
         form.addWidget(self.validate_box)
+        form.addWidget(QtWidgets.QLabel("Parallel:"))
+        self.jobs_spin = QtWidgets.QSpinBox()
+        self.jobs_spin.setRange(1, 16)
+        self.jobs_spin.setValue(1)
+        self.jobs_spin.setToolTip("Requests in flight at once. Raise it only for servers that can take the load.")
+        form.addWidget(self.jobs_spin)
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setValue(0)
@@ -701,6 +720,7 @@ class AuditDialog(QtWidgets.QDialog):
         self.export_btn.setEnabled(False)
         self._worker = AuditWorker(
             targets, base,
+            jobs=self.jobs_spin.value(),
             spec=w.spec,
             validate=self.validate_box.isChecked(),
             headers=w.extra_headers(),
@@ -1504,6 +1524,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for ep in sorted(groups[tag], key=lambda e: (e.path, e.method)):
                 child = QtWidgets.QTreeWidgetItem([f"{ep.method:<7}{ep.path}"])
                 child.setData(0, QtCore.Qt.UserRole, ep)
+                child.setData(0, _HAYSTACK_ROLE, _filter_haystack(ep))
                 child.setForeground(0, QtGui.QBrush(QtGui.QColor(METHOD_COLORS.get(ep.method, MUTED))))
                 font = QtGui.QFont(mono)
                 font.setStrikeOut(ep.deprecated)
@@ -1522,17 +1543,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def filter_tree(self, text: str):
         text = text.lower().strip()
-        for i in range(self.tree.topLevelItemCount()):
-            parent = self.tree.topLevelItem(i)
-            any_visible = False
-            for j in range(parent.childCount()):
-                child = parent.child(j)
-                ep: Endpoint = child.data(0, QtCore.Qt.UserRole)
-                haystack = f"{ep.method} {ep.path} {ep.summary} {ep.operation_id} {' '.join(ep.tags)}".lower()
-                visible = text in haystack if text else True
-                child.setHidden(not visible)
-                any_visible = any_visible or visible
-            parent.setHidden(not any_visible and bool(text))
+        # Repainting after every item made each keystroke take ~100 ms on large specs.
+        self.tree.setUpdatesEnabled(False)
+        try:
+            for i in range(self.tree.topLevelItemCount()):
+                parent = self.tree.topLevelItem(i)
+                any_visible = False
+                for j in range(parent.childCount()):
+                    child = parent.child(j)
+                    visible = not text or text in child.data(0, _HAYSTACK_ROLE)
+                    if child.isHidden() == visible:
+                        child.setHidden(not visible)
+                    any_visible = any_visible or visible
+                hide_parent = not any_visible and bool(text)
+                if parent.isHidden() != hide_parent:
+                    parent.setHidden(hide_parent)
+        finally:
+            self.tree.setUpdatesEnabled(True)
 
     # ---- request panel ----
     def _param_cell_text(self, row: int) -> str:
