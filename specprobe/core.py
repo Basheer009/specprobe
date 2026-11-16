@@ -1209,6 +1209,29 @@ class SecurityScheme:
         return None
 
 
+# 'with required prefix "Token"' (drf-spectacular), "prefix: JWT", "the prefix `Token`"
+_DECLARED_PREFIX = re.compile(r"""\bprefix\b\W{0,4}([A-Za-z][\w-]{0,30})""", re.I)
+# "Token <key>", "Bearer {jwt}", "JWT [token]": a scheme word followed by a placeholder.
+_PREFIX_EXAMPLE = re.compile(r"""\b(Bearer|Token|JWT)\s+(?:<[^>]*>|\{[^}]*\}|\[[^\]]*\])""", re.I)
+_TOKEN_SCHEME_KEYS = {"token", "tokenauth", "tokenauthentication"}
+
+
+def _authorization_prefix(key: str, description: str) -> str:
+    """Prefix for an apiKey scheme that carries the Authorization header.
+
+    Django REST Framework's TokenAuthentication expects "Token <key>", and the
+    spec says so in the scheme description (drf-spectacular) or names the scheme
+    after it (the usual drf-yasg setup). Anything else is taken to be Bearer.
+    """
+    for pattern in (_DECLARED_PREFIX, _PREFIX_EXAMPLE):
+        m = pattern.search(description)
+        if m:
+            return m.group(1)
+    if re.sub(r"[^a-z]", "", key.lower()) in _TOKEN_SCHEME_KEYS:
+        return "Token"
+    return "Bearer"
+
+
 def parse_security_schemes(spec: dict) -> list[SecurityScheme]:
     """Normalise Swagger 2.0 securityDefinitions and OpenAPI 3.x securitySchemes."""
     components = spec.get("components") if isinstance(spec.get("components"), dict) else {}
@@ -1234,7 +1257,8 @@ def parse_security_schemes(spec: dict) -> list[SecurityScheme]:
             name, loc = str(s.get("name", "")), str(s.get("in", "header"))
             if name.lower() == "authorization" and loc == "header":
                 # Swagger 2.0 has no bearer type, so APIs model it this way.
-                out.append(SecurityScheme(key, "bearer", prefix="Bearer", description=desc))
+                out.append(SecurityScheme(key, "bearer", prefix=_authorization_prefix(str(key), desc),
+                                          description=desc))
             else:
                 out.append(SecurityScheme(key, "apikey", name=name, location=loc, description=desc))
         elif t == "oauth2":

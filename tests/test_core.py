@@ -627,6 +627,23 @@ class Security(unittest.TestCase):
         self.assertEqual(kinds["jwt"].kind, "bearer")
         self.assertEqual(parse_security_schemes(PETS_SPEC)[0].kind, "bearer")
 
+    def test_authorization_api_key_prefix_follows_the_spec(self):
+        def prefix(key, description=""):
+            spec = {"components": {"securitySchemes": {key: {
+                "type": "apiKey", "in": "header", "name": "Authorization", "description": description}}}}
+            (scheme,) = parse_security_schemes(spec)
+            self.assertEqual(scheme.kind, "bearer")
+            return scheme.prefix
+
+        # drf-spectacular's description of DRF TokenAuthentication
+        self.assertEqual(prefix("tokenAuth", 'Token-based authentication with required prefix "Token"'), "Token")
+        # The common drf-yasg setup names the scheme and says nothing else.
+        self.assertEqual(prefix("Token"), "Token")
+        self.assertEqual(prefix("auth", "Enter your key as: JWT <token>"), "JWT")
+        self.assertEqual(prefix("auth", "Enter <token>"), "Bearer")
+        self.assertEqual(prefix("jwtToken"), "Bearer")
+        self.assertEqual(prefix("Bearer"), "Bearer")
+
     def test_url_redaction(self):
         out = redact_url("https://u:hunter2@h/p?api_key=abc&page=2&token=t")
         self.assertNotIn("hunter2", out)
