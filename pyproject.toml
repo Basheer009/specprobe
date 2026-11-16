@@ -36,7 +36,6 @@ dynamic = ["version"]
 Homepage = "https://github.com/Basheer009/specprobe"
 Repository = "https://github.com/Basheer009/specprobe"
 Issues = "https://github.com/Basheer009/specprobe/issues"
-Changelog = "https://github.com/Basheer009/specprobe/blob/HEAD/CHANGELOG.md"
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]

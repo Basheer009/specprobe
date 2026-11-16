@@ -1,5 +1,9 @@
 # SpecProbe
 
+[![tests](https://github.com/Basheer009/specprobe/actions/workflows/tests.yml/badge.svg)](https://github.com/Basheer009/specprobe/actions/workflows/tests.yml)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/Basheer009/specprobe/blob/HEAD/LICENSE)
+
 Test any REST API that has an OpenAPI or Swagger spec, from a desktop app or the command line.
 
 Paste a docs page, a spec URL, a bare host or a local file. SpecProbe finds the spec, lists the endpoints, builds requests for you, and checks each response against what the spec promises. It isn't tied to any framework or backend.
