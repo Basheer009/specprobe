@@ -109,6 +109,21 @@ class Loading(GuiTestCase):
         self.assertTrue(self.win.audit_btn.isEnabled())
         self.assertIn("Pets", self.win.windowTitle())
 
+    def test_load_right_after_a_load_is_not_ignored(self):
+        # The worker emits its result before its thread exits. A Load started in
+        # that gap was silently dropped, which made CI flaky on a slow runner.
+        original_run = gui.Worker.run
+
+        def run_then_linger(worker):
+            original_run(worker)
+            time.sleep(0.5)
+
+        with mock.patch.object(gui.Worker, "run", run_then_linger):
+            self.load()
+            other = self.api.url.replace("127.0.0.1", "localhost")
+            self.load(base=other)
+        self.assertEqual(self.win.base_combo.currentText(), other)
+
     def test_spec_auth_scheme_preselected(self):
         self.load()
         self.assertEqual(self.win.auth_kind.currentData(), "bearer")

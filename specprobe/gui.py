@@ -1476,7 +1476,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def load_spec(self):
         url = self.url_edit.currentText().strip()
-        if not url or (self._load_worker and self._load_worker.isRunning()):
+        # _load_worker is cleared by the result slots, not when the thread
+        # exits: done/failed arrive while isRunning() can still be true.
+        if not url or self._load_worker is not None:
             return
         key = profile_key(url)
         same_api = not self._profile_key or key == self._profile_key
@@ -1495,6 +1497,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._load_worker.start()
 
     def _on_spec_failed(self, msg: str):
+        self._load_worker = None
         self._set_busy(False, "Load failed.")
         first_line = msg.splitlines()[0] if msg else "unknown error"
         box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Critical, "Load failed", first_line,
@@ -1503,6 +1506,7 @@ class MainWindow(QtWidgets.QMainWindow):
         box.exec()
 
     def _on_spec_loaded(self, result):
+        self._load_worker = None
         spec, found, endpoints = result
         source = self.url_edit.currentText().strip()
         self._store_profile()
