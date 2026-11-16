@@ -15,6 +15,8 @@ First public release. The project is now an installable package (`specprobe/`) w
 - GUI: server picker, per-API settings, drafts kept across endpoints, request history, Docs tab, extra headers, enum dropdowns, cancel, timeout, Copy as cURL, Save response, Log tab, and dark theme support.
 - CLI: `show` subcommand, `--curl`, `--output`, `--form`, `--body`, `--version`, `$SPECPROBE_URL`, and safer ways to supply a password.
 - Parallel audits: `audit --jobs N`, or **Parallel** in the GUI's Audit dialog. The default is still one request at a time.
+- Audit dialog: double-click a result to open that endpoint with the values the audit used, which is also how you fill in a skipped endpoint's missing value. Results can be sorted once the run finishes, and they're kept when you close and reopen the dialog.
+- `Esc` stops waiting for a response.
 - Test suite running against a local mock API, run by GitHub Actions on Windows for Python 3.10 to 3.13.
 
 ### Changed

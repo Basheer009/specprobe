@@ -612,11 +612,13 @@ class AuditDialog(QtWidgets.QDialog):
     def __init__(self, window: "MainWindow"):
         super().__init__(window)
         self.window_ref = window
+        self.spec = window.spec
         self.setWindowTitle("Audit GET endpoints")
         self.resize(980, 640)
         self._worker: Optional[AuditWorker] = None
         self._rows: list[AuditRow] = []
         self._skipped: list[dict] = []
+        self._planned: dict[tuple, RequestParts] = {}
         self._total = 0
 
         intro = QtWidgets.QLabel(
@@ -656,6 +658,8 @@ class AuditDialog(QtWidgets.QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.table.setToolTip("Double-click a row to open that endpoint with the values the audit used")
+        self.table.cellDoubleClicked.connect(self.open_row)
         hh = self.table.horizontalHeader()
         for col in range(4):
             hh.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeToContents)
@@ -710,6 +714,9 @@ class AuditDialog(QtWidgets.QDialog):
             params=self._parse_params(),
             tag=None if tag == "All" else tag,
         )
+        self._planned = {ep.key: parts for ep, parts in targets}
+        # Sorting while rows arrive would scatter them, so it's only on between runs.
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         self._rows = []
         self._total = len(targets)
@@ -737,13 +744,16 @@ class AuditDialog(QtWidgets.QDialog):
         if self._worker:
             self._worker.stop_requested = True
             self.stop_btn.setEnabled(False)
-            self.summary.setText("Stopping after the current request...")
+            self.summary.setText("Stopping after the requests in flight...")
 
-    def _add_row(self, cells: list[str], color: str):
+    def _add_row(self, cells: list[str], color: str, key: tuple):
         row = self.table.rowCount()
         self.table.insertRow(row)
         for col, text in enumerate(cells):
-            item = QtWidgets.QTableWidgetItem(text)
+            item = QtWidgets.QTableWidgetItem()
+            # Numbers sort as numbers: 20 ms before 100 ms.
+            item.setData(QtCore.Qt.DisplayRole, int(text) if text.isdigit() else text)
+            item.setData(QtCore.Qt.UserRole, key)
             if col == 0:
                 item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
             if col == 5 and text:
@@ -757,6 +767,7 @@ class AuditDialog(QtWidgets.QDialog):
         self._add_row(
             [row.bucket, str(row.status or "-"), f"{row.ms:.0f}", row.tag, f"{row.method} {row.path}", contract],
             colors.get(row.bucket, BAD_COLOR),
+            (row.method, row.path),
         )
         self.table.scrollToBottom()
         self.progress.setValue(len(self._rows))
@@ -766,6 +777,7 @@ class AuditDialog(QtWidgets.QDialog):
             self._add_row(
                 ["skip", "-", "-", "", f"{item['method']} {item['path']}", f"needs: {', '.join(item['missing'])}"],
                 MUTED,
+                (item["method"], item["path"]),
             )
         counts: dict[str, int] = {}
         for row in self._rows:
@@ -776,9 +788,25 @@ class AuditDialog(QtWidgets.QDialog):
         if self.validate_box.isChecked():
             parts.append(f"{issues} with contract issues")
         self.summary.setText(", ".join(parts))
+        # Without a sort column, enabling sorting keeps plan order until a header is clicked.
+        self.table.horizontalHeader().setSortIndicator(-1, QtCore.Qt.AscendingOrder)
+        self.table.setSortingEnabled(True)
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.export_btn.setEnabled(bool(self._rows))
+
+    def open_row(self, row: int, _column: int = 0):
+        """Show the row's endpoint in the main window, filled with the audit's values.
+
+        For a skipped row this is where the user supplies the missing value.
+        """
+        item = self.table.item(row, 0)
+        key = item.data(QtCore.Qt.UserRole) if item else None
+        if not key:
+            return
+        parts = self._planned.get(tuple(key))
+        self.window_ref.show_endpoint(*key, values=_values_from_parts(parts) if parts else None)
+        self.reject()
 
     def export(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export audit", "audit.json", "JSON (*.json)")
@@ -797,6 +825,18 @@ class AuditDialog(QtWidgets.QDialog):
     def reject(self):
         self.stop()
         super().reject()
+
+
+def _values_from_parts(parts: RequestParts) -> dict:
+    """Turn planned request parts back into parameter-table values."""
+    values: dict = {(name, "path"): value for name, value in parts.path_params.items()}
+    query: dict[str, list[str]] = {}
+    for name, value in parts.query:
+        query.setdefault(name, []).append(str(value))
+    values.update({(name, "query"): ",".join(v) for name, v in query.items()})
+    values.update({(name, "header"): value for name, value in parts.headers.items()})
+    values.update({(name, "cookie"): value for name, value in parts.cookies.items()})
+    return values
 
 
 def _load_and_parse(url: str, **kwargs) -> tuple[dict, str, list[Endpoint]]:
@@ -831,6 +871,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_result: Optional[CallResult] = None
         self._load_worker: Optional[Worker] = None
         self._call_worker: Optional[Worker] = None
+        self._audit_dialog: Optional[AuditDialog] = None
 
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
@@ -891,10 +932,11 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F"), self, activated=self._focus_filter)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self, activated=self.url_edit.setFocus)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+R"), self, activated=self.load_spec)
+        QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self, activated=self._on_escape)
 
         self.statusBar().showMessage(
             "Paste an API docs or spec URL and click Load. "
-            "(Ctrl+L address, Ctrl+R reload, Ctrl+F filter, Ctrl+Enter send)"
+            "(Ctrl+L address, Ctrl+R reload, Ctrl+F filter, Ctrl+Enter send, Esc cancel)"
         )
 
         self._log_handler = QtLogHandler()
@@ -1152,7 +1194,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cancel_btn = QtWidgets.QPushButton("Cancel")
         self.cancel_btn.setMinimumHeight(32)
         self.cancel_btn.setEnabled(False)
-        self.cancel_btn.setToolTip("Stop waiting for the response. The server may still process the request.")
+        self.cancel_btn.setToolTip("Stop waiting for the response (Esc). The server may still process the request.")
         self.cancel_btn.clicked.connect(self.cancel_request)
         self.curl_btn = QtWidgets.QPushButton("Copy as cURL")
         self.curl_btn.setMinimumHeight(32)
@@ -1859,6 +1901,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_busy(True, f"{ep.method} {request['url']}")
         self._call_worker.start()
 
+    def _on_escape(self):
+        if self.cancel_btn.isEnabled():
+            self.cancel_request()
+
     def cancel_request(self):
         """Stop waiting. The thread can't be interrupted, so its result is ignored."""
         self._call_worker = None
@@ -2029,6 +2075,19 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.status_label.setText(_colored(MUTED, entry["note"]))
 
+    def show_endpoint(self, method: str, path: str, values: Optional[dict] = None):
+        """Select an endpoint, first merging `values` into its draft."""
+        self._save_draft()
+        self.current_endpoint = None
+        if values:
+            draft = dict(self._drafts.get((method, path)) or {"values": {}, "body": "", "content_type": ""})
+            draft["values"] = {**draft["values"], **values}
+            self._drafts[(method, path)] = draft
+        if self.search_edit.text():
+            self.search_edit.clear()  # the endpoint might be filtered out of view
+        self.left_tabs.setCurrentIndex(0)
+        self._select_endpoint(method, path)
+
     def _select_endpoint(self, method: str, path: str):
         for i in range(self.tree.topLevelItemCount()):
             parent = self.tree.topLevelItem(i)
@@ -2077,9 +2136,13 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.deleteLater()
 
     def open_audit(self):
-        dlg = AuditDialog(self)
+        # Kept between openings, so the results survive a trip to the main window.
+        dlg = self._audit_dialog
+        if dlg is None or dlg.spec is not self.spec:
+            if dlg is not None:
+                dlg.deleteLater()
+            dlg = self._audit_dialog = AuditDialog(self)
         dlg.exec()
-        dlg.deleteLater()
 
 
 def _human_size(size: int) -> str:

@@ -72,6 +72,7 @@ Your edits to an endpoint are kept when you switch to another. A path value is c
 | `Ctrl+R` | Reload the spec |
 | `Ctrl+F` | Filter endpoints |
 | `Ctrl+Enter` | Send |
+| `Esc` | Stop waiting for the response |
 
 The app follows your system's light or dark theme. The screenshots here switch with your browser's theme too.
 
@@ -79,9 +80,11 @@ The app follows your system's light or dark theme. The screenshots here switch w
 
 **Audit...** calls every GET endpoint whose required values it knows, and skips the rest rather than guessing. Give it values such as `petId=1, username=user1` to cover more endpoints. It's the same sweep as the CLI's `audit`, and **Export JSON...** saves the report.
 
+Double-click a row to open that endpoint with the values the audit used. On a skipped row, that's where you fill in the missing value. Once the run finishes, click a column header to sort, for example by time. **Parallel** sends several requests at once. It stays at 1 unless you raise it, because an audit shouldn't load a server or trip its rate limits unasked.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/audit-dark.png">
-  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/audit-light.png" alt="The Audit dialog after sweeping the Petstore demo: six endpoints ok, one 404, one skipped for a missing value">
+  <img src="https://raw.githubusercontent.com/Basheer009/specprobe/HEAD/docs/screenshots/audit-light.png" alt="The Audit dialog after sweeping the Petstore demo: five endpoints ok, two 404s, one skipped for a missing value">
 </picture>
 
 ### Login dialog

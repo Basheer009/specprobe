@@ -268,6 +268,16 @@ class Requests(GuiTestCase):
         self.assertIn("Cancelled", self.win.status_label.text())
         self.assertEqual(self.win.pretty_view.toPlainText(), "")
 
+    def test_escape_cancels_only_while_sending(self):
+        self.select("GET", "/slow")
+        self.win._on_escape()  # idle: nothing to cancel
+        self.assertNotIn("Cancelled", self.win.status_label.text())
+        self.win.send_request()
+        self.win._on_escape()
+        self.assertFalse(self.win._busy)
+        self.assertIn("Cancelled", self.win.status_label.text())
+        wait_until(lambda: not gui._LIVE_WORKERS, timeout=10)
+
     def test_copy_curl(self):
         self.win.token_edit.setText("good")
         self.select("GET", "/secure")
@@ -592,6 +602,65 @@ class Audit(GuiTestCase):
         wait_until(lambda: dlg.start_btn.isEnabled(), timeout=20)
         rows = {dlg.table.item(r, 4).text(): dlg.table.item(r, 0).text() for r in range(dlg.table.rowCount())}
         self.assertEqual(rows["GET /pets/{id}"], "skip")
+
+    def test_double_click_opens_endpoint_with_audit_values(self):
+        self.load()
+        dlg = gui.AuditDialog(self.win)
+        dlg.params_edit.setText("id=5, q=x")
+        dlg.start()
+        wait_until(lambda: dlg.start_btn.isEnabled(), timeout=20)
+        row = next(r for r in range(dlg.table.rowCount()) if dlg.table.item(r, 4).text() == "GET /pets/{id}")
+        dlg.open_row(row)
+        ep = self.win.current_endpoint
+        self.assertEqual(ep.key, ("GET", "/pets/{id}"))
+        self.assertEqual(self.win._param_values()[("id", "path")], "5")
+        dlg.deleteLater()
+
+    def test_double_click_on_skipped_row_opens_endpoint(self):
+        self.load()
+        self.win.search_edit.setText("boom")  # filtered out of view
+        dlg = gui.AuditDialog(self.win)
+        dlg.tag_combo.setCurrentText("pets")
+        dlg.start()
+        wait_until(lambda: dlg.start_btn.isEnabled(), timeout=20)
+        row = next(r for r in range(dlg.table.rowCount()) if dlg.table.item(r, 0).text() == "skip")
+        dlg.open_row(row)
+        self.assertEqual(self.win.current_endpoint.key, ("GET", "/pets/{id}"))
+        self.assertEqual(self.win.search_edit.text(), "")
+        dlg.deleteLater()
+
+    def test_numbers_sort_numerically_after_the_run(self):
+        self.load()
+        dlg = gui.AuditDialog(self.win)
+        dlg.params_edit.setText("id=5, q=x")
+        dlg.start()
+        self.assertFalse(dlg.table.isSortingEnabled())
+        wait_until(lambda: dlg.start_btn.isEnabled(), timeout=20)
+        self.assertTrue(dlg.table.isSortingEnabled())
+        # Rows stay in plan order, skipped last, until the user picks a column.
+        expected = [f"GET {path}" for _, path in dlg._planned]
+        expected += [f"{item['method']} {item['path']}" for item in dlg._skipped]
+        shown = [dlg.table.item(r, 4).text() for r in range(dlg.table.rowCount())]
+        self.assertEqual(shown, expected)
+        dlg.table.sortItems(2)
+        ms = [dlg.table.item(r, 2).data(QtCore.Qt.DisplayRole) for r in range(dlg.table.rowCount())
+              if dlg.table.item(r, 0).text() != "skip"]
+        self.assertEqual(ms, sorted(ms))
+        dlg.deleteLater()
+
+    def test_results_survive_reopening(self):
+        self.load()
+        self.win._audit_dialog = None
+        QtCore.QTimer.singleShot(0, lambda: self.win._audit_dialog.reject())
+        self.win.open_audit()
+        first = self.win._audit_dialog
+        QtCore.QTimer.singleShot(0, lambda: self.win._audit_dialog.reject())
+        self.win.open_audit()
+        self.assertIs(self.win._audit_dialog, first)
+        self.load()  # a new spec gets a new dialog
+        QtCore.QTimer.singleShot(0, lambda: self.win._audit_dialog.reject())
+        self.win.open_audit()
+        self.assertIsNot(self.win._audit_dialog, first)
 
     def test_stop(self):
         self.load()
