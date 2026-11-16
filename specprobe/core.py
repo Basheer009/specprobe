@@ -320,6 +320,52 @@ def spec_refs_from_body(text: str, page_url: str) -> list[str]:
     return list(dict.fromkeys(resolved))
 
 
+@dataclass
+class SpecGroup:
+    """One of several specs a docs page offers (springdoc groups, Swashbuckle docs)."""
+
+    name: str
+    url: str
+
+
+_URLS_LIST = re.compile(r"""["']?urls["']?\s*[:=]\s*\[([^\]]*)\]""")
+_LIST_ENTRY = re.compile(r"\{[^{}]*\}")
+_ENTRY_URL = re.compile(r"""["']?url["']?\s*:\s*["']([^"']+)["']""")
+_ENTRY_NAME = re.compile(r"""["']?name["']?\s*:\s*["']([^"']*)["']""")
+
+
+def spec_groups_from_body(text: str, page_url: str) -> list[SpecGroup]:
+    """The named specs a swagger-config or a Swagger UI `urls: [...]` list offers.
+
+    Only what the page declares is read, in its own order. Names come from the
+    page, so they are untrusted display text.
+    """
+    pairs: list[tuple[str, str]] = []
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        for e in data.get("urls") or []:
+            if isinstance(e, dict) and isinstance(e.get("url"), str):
+                pairs.append((str(e.get("name") or ""), e["url"]))
+    elif data is None:
+        unescaped = text.replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&")
+        for listing in _URLS_LIST.finditer(unescaped):
+            for entry in _LIST_ENTRY.finditer(listing.group(1)):
+                url = _ENTRY_URL.search(entry.group(0))
+                if url:
+                    name = _ENTRY_NAME.search(entry.group(0))
+                    pairs.append((name.group(1) if name else "", url.group(1)))
+    groups: dict[str, SpecGroup] = {}
+    for name, ref in pairs:
+        for absolute in _resolve_refs([ref], page_url):
+            if "petstore" in absolute.lower() and not _same_origin(absolute, page_url):
+                continue  # the stock Swagger UI demo entry
+            groups.setdefault(absolute, SpecGroup(name.strip() or absolute, absolute))
+    return list(groups.values())
+
+
 def embedded_spec(text: str) -> Optional[dict]:
     """Extract a spec held inline by a page or init script.
 
@@ -368,13 +414,24 @@ def fetch_spec(
     timeout: float = 15,
     headers: Optional[dict] = None,
     auth: Optional["Auth"] = None,
+    groups: Optional[list[SpecGroup]] = None,
 ) -> tuple[dict, str]:
     """Locate and load a spec from a URL or a local file. Returns (spec, source).
 
     `headers`/`auth` support specs that sit behind authentication. They are only
     sent to the origin of the URL the user supplied, never to an origin that a
     fetched page merely referred to.
+
+    Pass a list as `groups` to learn about the alternatives: when the pages
+    offered several named specs, it is filled with them, the loaded one included.
     """
+    offered: dict[str, SpecGroup] = {}
+
+    def finish(result: tuple[dict, str]) -> tuple[dict, str]:
+        if groups is not None and len(offered) > 1:
+            groups.extend(offered.values())
+        return result
+
     if is_local_source(url):
         path = _local_path(url)
         log.debug("fetch_spec: reading local file %s", path)
@@ -457,12 +514,14 @@ def fetch_spec(
             if spec is not None:
                 if has_operations(spec):
                     log.debug("fetch_spec: OK %s (%s)", redact_url(candidate), how)
-                    return spec, r.url
+                    return finish((spec, r.url))
                 log.debug("fetch_spec: %s has no operations; trying the other declared URLs", redact_url(candidate))
                 empty = empty or (spec, r.url)
                 continue
 
             refs = spec_refs_from_body(r.text, r.url)
+            for group in spec_groups_from_body(r.text, r.url):
+                offered.setdefault(group.url, group)
             if "html" in ctype.lower():
                 refs += init_scripts_from_html(r.text, r.url)
             fresh = [ref for ref in refs if ref not in attempted]
@@ -478,7 +537,7 @@ def fetch_spec(
 
     if empty:
         log.debug("fetch_spec: OK %s (no operations in any declared spec)", redact_url(empty[1]))
-        return empty
+        return finish(empty)
     if auth_required:
         raise SpecError(
             f"{redact_url(auth_required)} needs authentication to read the spec. "

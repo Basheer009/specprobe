@@ -110,12 +110,13 @@ def _global_cookies(args) -> dict:
     return dict(_pairs(getattr(args, "cookie", None), "--cookie"))
 
 
-def _load(args) -> tuple[dict, str, list[Endpoint], str]:
+def _load(args, groups: Optional[list] = None) -> tuple[dict, str, list[Endpoint], str]:
     spec, found = fetch_spec(
         args.url,
         verify=not args.no_verify,
         headers=_global_headers(args),
         auth=_auth(args),
+        groups=groups,
     )
     base = args.base or base_url_from_spec(spec, found)
     eps = parse_endpoints(spec)
@@ -174,11 +175,15 @@ def _endpoint_summary(e: Endpoint, spec: dict) -> dict:
 
 
 def cmd_spec(args) -> int:
-    spec, found, eps, base = _load(args)
+    groups: list = []
+    spec, found, eps, base = _load(args, groups)
     shown = filter_endpoints(eps, text=args.filter, tag=args.tag, method=args.method)
     if args.table:
         print(f"# {spec_title(spec)} ({spec_version_label(spec)})")
         print(f"# spec: {found}")
+        for group in groups:
+            mark = "*" if group.url == found else " "
+            print(f"#  {mark} offered: {group.name}  {group.url}")
         print(f"# base: {base or '(unknown, pass --base)'}")
         schemes = parse_security_schemes(spec)
         if schemes:
@@ -195,6 +200,7 @@ def cmd_spec(args) -> int:
         "base_url": base,
         "info": spec.get("info", {}),
         "spec_version": spec_version_label(spec),
+        "spec_groups": [vars(g) for g in groups],
         "security_schemes": [vars(s) for s in parse_security_schemes(spec)],
         "endpoints": [_endpoint_summary(e, spec) for e in shown],
     })

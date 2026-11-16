@@ -67,6 +67,18 @@ class Spec(CliTestCase):
         self.assertIn("/secure", out)
         self.assertNotIn("/pets", out)
 
+    def test_offered_specs_are_listed(self):
+        page = self.api.url + "/grouped/swagger-ui/index.html"
+        _, out, _ = run("--url", page, "spec")
+        payload = json.loads(out)
+        self.assertEqual([g["name"] for g in payload["spec_groups"]], ["admin", "public"])
+        self.assertEqual(payload["spec_groups"][1]["url"], payload["spec_url"])
+        _, out, _ = run("--url", page, "spec", "--table")
+        self.assertIn("#    offered: admin  ", out)
+        self.assertIn("#  * offered: public  ", out)
+        _, out, _ = self.cli("spec")
+        self.assertEqual(json.loads(out)["spec_groups"], [])
+
     def test_local_file(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "spec.json"

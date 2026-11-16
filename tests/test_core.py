@@ -107,6 +107,33 @@ class Discovery(ApiTestCase):
     def test_springdoc_groups_skip_an_empty_group(self):
         self.assertTrue(self.assert_finds("/grouped/swagger-ui/index.html", "Pets").endswith("/grouped/v3/api-docs/public"))
 
+    def test_offered_groups_are_reported(self):
+        groups: list = []
+        fetch_spec(self.api.url + "/grouped/swagger-ui/index.html", groups=groups)
+        self.assertEqual([g.name for g in groups], ["admin", "public"])
+        self.assertTrue(groups[1].url.endswith("/grouped/v3/api-docs/public"))
+
+    def test_a_single_spec_reports_no_groups(self):
+        for path in ("/docs", "/swagger/index.html", "/openapi.json"):
+            groups: list = []
+            fetch_spec(self.api.url + path, groups=groups)
+            self.assertEqual(groups, [], path)
+
+    def test_group_lists_in_page_shapes(self):
+        swashbuckle = ('var configObject = JSON.parse(\'{"urls":[{"url":"v1\\/swagger.json","name":"V1"},'
+                       '{"name":"V2 beta","url":"v2\\/swagger.json"}]}\');')
+        self.assertEqual(core.spec_groups_from_body(swashbuckle, "https://h/swagger/index.js"), [
+            core.SpecGroup("V1", "https://h/swagger/v1/swagger.json"),
+            core.SpecGroup("V2 beta", "https://h/swagger/v2/swagger.json"),
+        ])
+        bundle = 'SwaggerUIBundle({urls: [{url: "/a.json", name: "A"}, {url: "/b.json"}]})'
+        self.assertEqual(core.spec_groups_from_body(bundle, "https://h/docs"), [
+            core.SpecGroup("A", "https://h/a.json"), core.SpecGroup("https://h/b.json", "https://h/b.json"),
+        ])
+        stock = 'SwaggerUIBundle({urls: [{url: "https://petstore.swagger.io/v2/swagger.json", name: "demo"}]})'
+        self.assertEqual(core.spec_groups_from_body(stock, "https://h/docs"), [])
+        self.assertEqual(core.spec_groups_from_body('SwaggerUIBundle({url: "/openapi.json"})', "https://h/d"), [])
+
     def test_a_spec_without_operations_still_loads_when_nothing_better_is_declared(self):
         self.assertTrue(self.assert_finds("/grouped/v3/api-docs/admin", "Empty group").endswith("/admin"))
 

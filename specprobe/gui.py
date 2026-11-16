@@ -36,6 +36,7 @@ from .core import (
     CallResult,
     Endpoint,
     RequestParts,
+    SpecGroup,
     body_text_for_editor,
     build_url,
     default_param_value,
@@ -840,10 +841,11 @@ def _values_from_parts(parts: RequestParts) -> dict:
     return values
 
 
-def _load_and_parse(url: str, **kwargs) -> tuple[dict, str, list[Endpoint]]:
+def _load_and_parse(url: str, **kwargs) -> tuple[dict, str, list[Endpoint], list[SpecGroup]]:
     """Fetch and parse off the UI thread, so a malformed spec fails cleanly."""
-    spec, found = fetch_spec(url, **kwargs)
-    return spec, found, parse_endpoints(spec)
+    groups: list[SpecGroup] = []
+    spec, found = fetch_spec(url, groups=groups, **kwargs)
+    return spec, found, parse_endpoints(spec), groups
 
 
 def _send_and_check(ep: Endpoint, spec: dict, request: dict) -> tuple[CallResult, list[str]]:
@@ -860,6 +862,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.spec: Optional[dict] = None
         self.spec_url: Optional[str] = None
+        self._spec_groups: list[SpecGroup] = []
         self.endpoints: list[Endpoint] = []
         self.current_endpoint: Optional[Endpoint] = None
         self.session_cookies: dict = {}
@@ -973,6 +976,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.audit_btn.setToolTip("Call all GET endpoints that need no invented data and summarize")
         self.audit_btn.setEnabled(False)
         self.audit_btn.clicked.connect(self.open_audit)
+        self.group_box = QtWidgets.QWidget()
+        group_row = QtWidgets.QHBoxLayout(self.group_box)
+        group_row.setContentsMargins(0, 0, 0, 0)
+        group_row.addWidget(QtWidgets.QLabel("Spec:"))
+        self.group_combo = QtWidgets.QComboBox()
+        self.group_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.group_combo.setMaximumWidth(260)
+        self.group_combo.setToolTip("This docs page offers several specs. Pick one to load it.")
+        self.group_combo.activated.connect(self._on_group_chosen)
+        group_row.addWidget(self.group_combo)
+        self.group_box.hide()
+        url_btns.addWidget(self.group_box)
         url_btns.addWidget(self.open_file_btn)
         url_btns.addWidget(self.load_btn)
         url_btns.addWidget(self.audit_btn)
@@ -1271,6 +1286,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._busy = busy
         self.progress.setVisible(busy)
         self.load_btn.setEnabled(not busy)
+        self.group_combo.setEnabled(not busy)
         have_ep = self.current_endpoint is not None
         self.send_btn.setEnabled(not busy and have_ep)
         self.curl_btn.setEnabled(have_ep)
@@ -1499,6 +1515,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_spec_failed(self, msg: str):
         self._load_worker = None
+        self._show_spec_groups()  # back to the spec still loaded
         self._set_busy(False, "Load failed.")
         first_line = msg.splitlines()[0] if msg else "unknown error"
         box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Critical, "Load failed", first_line,
@@ -1508,7 +1525,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_spec_loaded(self, result):
         self._load_worker = None
-        spec, found, endpoints = result
+        spec, found, endpoints, groups = result
         source = self.url_edit.currentText().strip()
         self._store_profile()
         if found != self.spec_url:
@@ -1518,6 +1535,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spec = spec
         self.spec_url = found
         self.endpoints = endpoints
+        # Loading one of the offered specs directly keeps the choice on screen.
+        if groups or not any(g.url in (found, source) for g in self._spec_groups):
+            self._spec_groups = groups
+        self._show_spec_groups()
         self._apply_profile(profile_key(source))
         self._apply_spec_auth_hint()
 
@@ -1540,6 +1561,26 @@ class MainWindow(QtWidgets.QMainWindow):
         hint = "" if self.base_combo.currentText().strip() else " Set the Server URL to send requests."
         self._set_busy(False, f"Loaded {title} ({spec_version_label(spec)}): "
                               f"{len(endpoints)} endpoints from {found}.{hint}")
+
+    def _show_spec_groups(self):
+        """List the specs the docs page offered, with the loaded one selected."""
+        combo = self.group_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for group in self._spec_groups:
+            # Names and URLs come from the page: plain item text, escaped tooltip.
+            combo.addItem(group.name, group.url)
+            combo.setItemData(combo.count() - 1, "<p>" + html.escape(group.url) + "</p>", QtCore.Qt.ToolTipRole)
+        combo.setCurrentIndex(combo.findData(self.spec_url))
+        combo.blockSignals(False)
+        self.group_box.setVisible(len(self._spec_groups) > 1)
+
+    def _on_group_chosen(self, index: int):
+        url = self.group_combo.itemData(index)
+        if not url or url == self.spec_url or self._load_worker is not None:
+            return
+        self.url_edit.setEditText(url)
+        self.load_spec()
 
     def _clear_request_panel(self):
         self.method_label.setText("-")

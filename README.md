@@ -50,6 +50,8 @@ specprobe-gui https://api.example.com/docs   # load straight away
 2. If the API needs auth, choose the type (the spec's declared scheme is preselected, with its prefix, such as `Token` for Django REST Framework's token auth) or click **Login...**.
 3. Pick an endpoint, fill in **Parameters** and **Body**, and press **Ctrl+Enter**. A required JSON body starts from the spec's example; **Insert example** builds one for any body.
 
+When a docs page offers several specs, such as springdoc groups or Swashbuckle versions, a **Spec** list appears next to **Load**. The primary one is loaded first, or else the first that has any endpoints.
+
 The status line shows the result along with `contract: OK` or the number of issues, which are listed on the **Contract** tab.
 
 <picture>
@@ -139,6 +141,8 @@ Global flags go **before** the subcommand. Output on stdout is JSON unless you p
 specprobe --url https://api.example.com/docs spec --table
 specprobe --url ./openapi.yaml spec --filter users --method GET
 ```
+
+When the docs page offers several specs, `spec` lists them (`spec_groups` in JSON, `offered:` lines in the table). Pass the URL of another one as `--url` to use it.
 
 ### `show`: inspect one endpoint
 
@@ -239,7 +243,6 @@ Proxies are honoured through the standard `HTTP_PROXY` and `HTTPS_PROXY` environ
 - Interactive OAuth2 flows that need a browser (authorization code, device code) aren't built in. Get the token elsewhere and paste it in.
 - External `$ref`s to other files or URLs aren't followed. Bundle the spec first.
 - `servers` overrides at the path or operation level are ignored. Use **Server** or `--base`.
-- If a docs page lists several specs, such as springdoc groups, only one is loaded: the UI's primary one, or else the first that has any operations. Paste the URL of the one you want.
 - Contract checks ignore `format` (such as `email` or `date-time`) and `discriminator`.
 - Generated cURL commands use POSIX shell quoting, which `cmd.exe` doesn't understand.
 

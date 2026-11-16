@@ -124,6 +124,25 @@ class Loading(GuiTestCase):
             self.load(base=other)
         self.assertEqual(self.win.base_combo.currentText(), other)
 
+    def test_offered_specs_can_be_picked(self):
+        self.load("/grouped/swagger-ui/index.html")
+        combo = self.win.group_combo
+        self.assertFalse(self.win.group_box.isHidden())
+        self.assertEqual([combo.itemText(i) for i in range(combo.count())], ["admin", "public"])
+        self.assertEqual(combo.currentText(), "public")  # the first group is empty
+        combo.setCurrentIndex(0)
+        self.win._on_group_chosen(0)
+        wait_until(lambda: not self.win._busy)
+        self.assertTrue(self.win.spec_url.endswith("/grouped/v3/api-docs/admin"))
+        self.assertFalse(self.win.group_box.isHidden())  # still offered
+        self.assertEqual(combo.currentText(), "admin")
+        self.load()
+        self.assertTrue(self.win.group_box.isHidden())
+
+    def test_single_spec_shows_no_picker(self):
+        self.load()
+        self.assertTrue(self.win.group_box.isHidden())
+
     def test_spec_auth_scheme_preselected(self):
         self.load()
         self.assertEqual(self.win.auth_kind.currentData(), "bearer")
@@ -494,6 +513,13 @@ class UntrustedContent(GuiTestCase):
         tip = self.win.tree.topLevelItem(0).child(0).toolTip(0)
         self.assertNotIn("<img", tip)
         self.assertNotIn("<img", self.win.params_table.item(0, 5).toolTip())
+
+    def test_offered_spec_names_are_plain_text(self):
+        self.win._spec_groups = [gui.SpecGroup(self.PAYLOAD, "http://h/" + self.PAYLOAD),
+                                 gui.SpecGroup("b", "http://h/b")]
+        self.win._show_spec_groups()
+        self.assertEqual(self.win.group_combo.itemText(0), self.PAYLOAD)
+        self.assertNotIn("<img", self.win.group_combo.itemData(0, QtCore.Qt.ToolTipRole))
 
     def test_server_text_is_escaped_in_status(self):
         from specprobe.core import CallResult
