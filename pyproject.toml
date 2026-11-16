@@ -10,12 +10,17 @@ authors = [{ name = "Basheer Adel" }]
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["openapi", "swagger", "api", "testing", "rest", "http", "cli", "gui"]
+keywords = [
+    "openapi", "swagger", "api", "testing", "rest", "rest-api", "http",
+    "api-client", "contract-testing", "cli", "gui", "pyside6",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Environment :: Win32 (MS Windows)",
     "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -23,6 +28,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
@@ -34,8 +41,10 @@ dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/Basheer009/specprobe"
+Documentation = "https://github.com/Basheer009/specprobe#readme"
 Repository = "https://github.com/Basheer009/specprobe"
 Issues = "https://github.com/Basheer009/specprobe/issues"
+Releases = "https://github.com/Basheer009/specprobe/releases"
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]
