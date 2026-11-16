@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "specprobe"
+name = "specprobe-openapi"
 description = "Desktop GUI and CLI for testing any OpenAPI/Swagger API"
 readme = "README.md"
 authors = [{ name = "Basheer Adel" }]

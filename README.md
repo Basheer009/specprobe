@@ -1,6 +1,7 @@
 # SpecProbe
 
 [![tests](https://github.com/Basheer009/specprobe/actions/workflows/tests.yml/badge.svg)](https://github.com/Basheer009/specprobe/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/specprobe-openapi)](https://pypi.org/project/specprobe-openapi/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/Basheer009/specprobe/blob/HEAD/LICENSE)
 
@@ -26,18 +27,23 @@ Paste a docs page, a spec URL, a bare host or a local file. SpecProbe finds the 
 Requires Python 3.10 or newer.
 
 ```bash
+pip install "specprobe-openapi[gui]"   # desktop app and CLI
+# or: pip install specprobe-openapi    # CLI only, without the ~250 MB Qt download
+```
+
+This gives you two commands: `specprobe-gui` and `specprobe`. (The package is called `specprobe-openapi` on PyPI because `specprobe` is too close to an unrelated project's name.)
+
+**From source:**
+
+```bash
 git clone https://github.com/Basheer009/specprobe.git
 cd specprobe
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-pip install ".[gui]"             # desktop app and CLI
-# or: pip install .              # CLI only, without the ~250 MB Qt download
+pip install ".[gui]"
 ```
 
-This gives you two commands: `specprobe-gui` and `specprobe`.
-
-**Windows shortcut:** run `setup.bat` once, then use `run.bat` for the app and `cli.bat` for the CLI. They work from any directory.
+**Windows shortcut:** in a source checkout, run `setup.bat` once, then use `run.bat` for the app and `cli.bat` for the CLI. They work from any directory.
 
 ## Desktop app
 
