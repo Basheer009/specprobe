@@ -326,6 +326,22 @@ class Drafts(GuiTestCase):
         self.select("GET", "/pets")
         self.assertEqual(self.param("limit"), "99")
 
+    def test_required_json_body_starts_from_the_example(self):
+        self.select("POST", "/pets")
+        body = json.loads(self.win.body_edit.toPlainText())
+        self.assertIn("name", body)
+        self.win.body_edit.setPlainText('{"name": "mine"}')
+        self.select("GET", "/pets")
+        self.select("POST", "/pets")
+        self.assertEqual(self.win.body_edit.toPlainText(), '{"name": "mine"}')  # the draft wins
+
+    def test_optional_or_form_body_starts_empty(self):
+        self.select("POST", "/echo")
+        self.assertEqual(self.win.body_edit.toPlainText(), "")
+        self.win.content_type.setCurrentText("multipart/form-data")
+        self.win._prefill_json_body(self.win.current_endpoint)
+        self.assertEqual(self.win.body_edit.toPlainText(), "")
+
     def test_path_value_carries_within_a_prefix_only(self):
         self.select("GET", "/pets/{id}")
         self.set_param("id", "42")

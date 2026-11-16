@@ -48,6 +48,7 @@ from .core import (
     find_endpoint,
     find_login_candidates,
     guess_login_shape,
+    is_json_type,
     is_local_source,
     login,
     normalize_url,
@@ -1695,6 +1696,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.content_type.setEditText(draft["content_type"])
         self.content_type.blockSignals(False)
         self.body_edit.setPlainText(draft["body"] if draft else "")
+        if draft is None and rb and rb.get("required"):
+            self._prefill_json_body(ep)
         self.example_btn.setEnabled(bool(rb))
         self.req_tabs.setTabText(1, "Body *" if rb and rb.get("required") else "Body")
         self._update_body_hint()
@@ -1826,6 +1829,19 @@ class MainWindow(QtWidgets.QMainWindow):
         text = with_query(url, parts.query)
         self.preview_url_label.setText(text)
         self.preview_url_label.setToolTip("<p>" + html.escape(text) + "</p>")
+
+    def _prefill_json_body(self, ep: Endpoint):
+        """Start a required JSON body from the spec's example rather than empty.
+
+        Form bodies are left alone: their examples hold file placeholders that
+        only mean something once the user picks a real file.
+        """
+        content_type = self.content_type.currentText().strip()
+        if not (self.spec and is_json_type(content_type)):
+            return
+        value = example_body(ep, self.spec, content_type)
+        if value is not None:
+            self.body_edit.setPlainText(body_text_for_editor(value, content_type))
 
     def insert_example_body(self):
         ep = self.current_endpoint

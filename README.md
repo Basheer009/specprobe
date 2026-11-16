@@ -48,7 +48,7 @@ specprobe-gui https://api.example.com/docs   # load straight away
 
 1. Paste a URL into **API URL** and press Enter, or use **Open file...** for a spec on disk.
 2. If the API needs auth, choose the type (the spec's declared scheme is preselected, with its prefix, such as `Token` for Django REST Framework's token auth) or click **Login...**.
-3. Pick an endpoint, fill in **Parameters** and **Body** (**Insert example** builds one from the schema), and press **Ctrl+Enter**.
+3. Pick an endpoint, fill in **Parameters** and **Body**, and press **Ctrl+Enter**. A required JSON body starts from the spec's example; **Insert example** builds one for any body.
 
 The status line shows the result along with `contract: OK` or the number of issues, which are listed on the **Contract** tab.
 
